@@ -283,7 +283,8 @@ void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Paramet
 
     Motor motor("192.168.1.1", 2000);
 
-    int turningTime = 0;
+    int turningTime = 20;
+    motor.tank(1.0, 1.0);
     while(g_SignalStatus == 0)
     {
 #ifndef NO_X
@@ -311,10 +312,10 @@ void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Paramet
 #endif
 
                     if(x > (Parameters::detectorSize / 2)) {
-                        rightFlow += output[x][y][0];
+                        leftFlow += output[x][y][0];
                     }
                     else {
-                        leftFlow += output[x][y][0];
+                        rightFlow += output[x][y][0];
                     }
                 }
             }
@@ -322,60 +323,56 @@ void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Paramet
         }
 
         char flow[255];
-
+        const int stabiliseTime = 12;
+        const int turnTime = 7;
+        const float flowThreshold = 30.0; // 100.0 weirdly worked in lab
         if(turningTime > 0)
         {
-            if(turningTime < 15) {
+            if(turningTime < stabiliseTime) {
                 motor.tank(1.0, 1.0);
+                sprintf(flow, "STABILISING (Right:%f)", rightFlow);
 #ifndef NO_X
-                cv::putText(outputImage, "STABILISING", cv::Point(0, outputImageSize - 5),
+                cv::putText(outputImage, flow, cv::Point(0, outputImageSize - 5),
                             cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0, 0, 0xFF));
 #else
-                std::cout << "STABILISING" << std::endl;
+                std::cout << flow << std::endl;
 #endif
             }
             else {
+                sprintf(flow, "MOVING (Right:%f)", rightFlow);
 #ifndef NO_X
-                cv::putText(outputImage, "TURNING", cv::Point(0, outputImageSize - 5),
+                cv::putText(outputImage, flow, cv::Point(0, outputImageSize - 5),
                             cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0, 0xFF, 0xFF));
 #else
-                std::cout << "TURNING" << std::endl;
+                std::cout << flow << std::endl;
 #endif
             }
             turningTime--;
         }
         else
         {
-            if(std::abs(leftFlow) > std::abs(rightFlow) && std::abs(leftFlow) > 100) {
-                motor.tank(0.5, -0.5);
-                turningTime = 40;
-                sprintf(flow, "LEFT (%f)", std::abs(leftFlow));
-#ifndef NO_X
-                cv::putText(outputImage, flow, cv::Point(0, outputImageSize - 5),
-                        cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0xFF, 0, 0));
-#else
-                std::cout << flow << std::endl;
-#endif
-            }
-            else if(std::abs(rightFlow) > 100){
+             // Heading away from wall
+            // **YUCK** or lost wall
+            if(rightFlow > 40.0f || rightFlow < 9.0f) {
                 motor.tank(-0.5, 0.5);
-                turningTime = 40;
-                sprintf(flow, "RIGHT (%f)", std::abs(rightFlow));
-#ifndef NO_X
-                cv::putText(outputImage, flow, cv::Point(0, outputImageSize - 5),
-                        cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0x00, 0xFF, 0));
-#else
-                std::cout << flow << std::endl;
-#endif
+                turningTime = stabiliseTime + turnTime;
+
+                std::cout << "Turn right" << std::endl;
+
             }
+            // Approaching wall
+            else if(rightFlow < 20.0f) {
+                motor.tank(0.5, -0.5);
+                turningTime = stabiliseTime + turnTime;
+
+                std::cout << "Turn left" << std::endl;
+            }
+
             else {
                 motor.tank(1.0, 1.0);
-#ifndef NO_X
-                cv::putText(outputImage, "CENTRE", cv::Point(0, outputImageSize - 5),
-                        cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0xFF, 0xFF, 0));
-#else
-                std::cout << "CENTRE" << std::endl;
-#endif
+
+                sprintf(flow, "CENTRE:%f", rightFlow);
+                std::cout << flow << std::endl;
             }
         }
 
@@ -408,7 +405,7 @@ void runLive()
     std::mutex outputMutex;
     float output[Parameters::detectorSize][Parameters::detectorSize][2] = {0};
 
-    std::thread displayThread(displayThreadHandler, std::ref(outputMutex), std::ref(output));
+    //std::thread displayThread(displayThreadHandler, std::ref(outputMutex), std::ref(output));
 
     // Catch interrupt (ctrl-c) signals
     std::signal(SIGINT, signalHandler);
@@ -509,7 +506,7 @@ void runLive()
         }
     }
 
-    displayThread.join();
+    //displayThread.join();
     dvs.stop();
     std::cout << "Ran for " << i << " " << DT << "ms timesteps, overan for " << overrunTime.count() << "ms, slept for " << sleepTime.count() << "ms" << std::endl;
     std::cout << "DVS:" << dvsGet << "ms, Step:" << step << "ms, Render:" << render << std::endl;
