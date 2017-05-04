@@ -10,4 +10,8 @@ ifdef LIVE
     endif
 endif
 
+ifdef ROBOT
+    CXXFLAGS    += -DROBOT
+endif
+
 include $(GENN_PATH)/userproject/include/makefile_common_gnu.mk

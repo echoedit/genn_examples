@@ -279,18 +279,21 @@ void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Paramet
 #ifndef NO_X
     const unsigned int outputImageSize = Parameters::detectorSize * Parameters::outputScale;
     cv::Mat outputImage(outputImageSize, outputImageSize, CV_8UC3);
-#endif 
+#endif  // NO_X
 
+#ifdef ROBOT
     Motor motor("192.168.1.1", 2000);
 
     int turningTime = 20;
     motor.tank(1.0, 1.0);
+#endif  // ROBOT
+
     while(g_SignalStatus == 0)
     {
 #ifndef NO_X
         // Clear background
         outputImage.setTo(cv::Scalar::all(0));
-#endif
+#endif  // NO_X
         float leftFlow = 0;
         float rightFlow = 0;
 
@@ -309,7 +312,7 @@ void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Paramet
 #ifndef NO_X
                     cv::line(outputImage, start, end,
                              CV_RGB(0xFF, 0xFF, 0xFF));
-#endif
+#endif  // NO_X
 
                     if(x > (Parameters::detectorSize / 2)) {
                         leftFlow += output[x][y][0];
@@ -322,6 +325,7 @@ void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Paramet
 
         }
 
+#ifdef ROBOT
         char flow[255];
         const int stabiliseTime = 12;
         const int turnTime = 7;
@@ -336,7 +340,7 @@ void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Paramet
                             cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0, 0, 0xFF));
 #else
                 std::cout << flow << std::endl;
-#endif
+#endif  // NO_X
             }
             else {
                 sprintf(flow, "MOVING (Right:%f)", rightFlow);
@@ -345,7 +349,7 @@ void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Paramet
                             cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0, 0xFF, 0xFF));
 #else
                 std::cout << flow << std::endl;
-#endif
+#endif  // NO_X
             }
             turningTime--;
         }
@@ -375,6 +379,7 @@ void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Paramet
                 std::cout << flow << std::endl;
             }
         }
+#endif  // ROBOT
 
 #ifdef NO_X
         std::this_thread::sleep_for(std::chrono::milliseconds(33));
@@ -384,7 +389,9 @@ void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Paramet
 #endif
     }
 
+#ifdef ROBOT
     motor.tank(0.0, 0.0);
+#endif  // ROBOT
 }
 
 void runLive()
@@ -392,12 +399,7 @@ void runLive()
      // Create DVS 128 device
     DVS128 dvs(DVS128::Polarity::On);
 
-    const cv::Point detectorPoint[Parameters::DetectorMax] = {
-        cv::Point(),//DetectorLeft
-        cv::Point(),//DetectorRight
-        cv::Point(),//DetectorUp
-        cv::Point(),//DetectorDown
-    };
+    // Accumulators for time spent in various bits of code
     double dvsGet = 0.0;
     double step = 0.0;
     double render = 0.0;
@@ -405,7 +407,7 @@ void runLive()
     std::mutex outputMutex;
     float output[Parameters::detectorSize][Parameters::detectorSize][2] = {0};
 
-    //std::thread displayThread(displayThreadHandler, std::ref(outputMutex), std::ref(output));
+    std::thread displayThread(displayThreadHandler, std::ref(outputMutex), std::ref(output));
 
     // Catch interrupt (ctrl-c) signals
     std::signal(SIGINT, signalHandler);
@@ -506,7 +508,7 @@ void runLive()
         }
     }
 
-    //displayThread.join();
+    displayThread.join();
     dvs.stop();
     std::cout << "Ran for " << i << " " << DT << "ms timesteps, overan for " << overrunTime.count() << "ms, slept for " << sleepTime.count() << "ms" << std::endl;
     std::cout << "DVS:" << dvsGet << "ms, Step:" << step << "ms, Render:" << render << std::endl;
