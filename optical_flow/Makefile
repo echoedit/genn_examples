@@ -14,4 +14,8 @@ ifdef ROBOT
     CXXFLAGS    += -DROBOT
 endif
 
+ifdef JETSON_POWER
+    CXXFLAGS    += -DJETSON_POWER
+endif
+
 include $(GENN_PATH)/userproject/include/makefile_common_gnu.mk

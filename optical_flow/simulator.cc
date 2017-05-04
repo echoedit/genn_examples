@@ -288,6 +288,12 @@ void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Paramet
     motor.tank(1.0, 1.0);
 #endif  // ROBOT
 
+#ifdef JETSON_POWER
+    std::ifstream powerStream("/sys/devices/platform/7000c400.i2c/i2c-1/1-0040/iio_device/in_power0_input");
+    std::ifstream gpuPowerStream("/sys/devices/platform/7000c400.i2c/i2c-1/1-0040/iio_device/in_power1_input");
+    std::ifstream cpuPowerStream("/sys/devices/platform/7000c400.i2c/i2c-1/1-0040/iio_device/in_power2_input");
+#endif  // JETSON_POWER
+
     while(g_SignalStatus == 0)
     {
 #ifndef NO_X
@@ -324,6 +330,27 @@ void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Paramet
             }
 
         }
+
+#ifdef JETSON_POWER
+        // Read all power measurements
+        unsigned int power, cpuPower, gpuPower;
+        powerStream >> power;
+        cpuPowerStream >> cpuPower;
+        gpuPowerStream >> gpuPower;
+
+        // Clear all stream flags (EOF gets set)
+        powerStream.clear();
+        cpuPowerStream.clear();
+        gpuPowerStream.clear();
+
+        char power[255];
+        sprintf(power, "Power:%umW, GPU power:%umW", power, gpuPower);
+        cv::putText(outputImage, power, cv::Point(0, outputImageSize - 20),
+                    cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0, 0, 0xFF));
+        sprintf(power, "CPU power:%umW", cpuPower);
+        cv::putText(outputImage, power, cv::Point(0, outputImageSize - 5),
+                    cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0, 0, 0xFF));
+#endif
 
 #ifdef ROBOT
         char flow[255];
