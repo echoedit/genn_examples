@@ -20,6 +20,7 @@
 
 // Common example includes
 #include "../common/dvs_128.h"
+#include "../common/motor.h"
 #include "../common/spike_csv_recorder.h"
 #include "../common/timer.h"
 
@@ -275,13 +276,22 @@ unsigned int read_p_input(std::ifstream &stream, std::vector<unsigned int> &indi
 void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Parameters::detectorSize][Parameters::detectorSize][2])
 {
     // Create output image
+#ifndef NO_X
     const unsigned int outputImageSize = Parameters::detectorSize * Parameters::outputScale;
     cv::Mat outputImage(outputImageSize, outputImageSize, CV_8UC3);
+#endif 
 
+    Motor motor("192.168.1.1", 2000);
+
+    int turningTime = 0;
     while(g_SignalStatus == 0)
     {
+#ifndef NO_X
         // Clear background
         outputImage.setTo(cv::Scalar::all(0));
+#endif
+        float leftFlow = 0;
+        float rightFlow = 0;
 
         {
             std::lock_guard<std::mutex> lock(outputMutex);
@@ -295,16 +305,89 @@ void displayThreadHandler(std::mutex &outputMutex, const float (&output)[Paramet
                     const cv::Point end = start + cv::Point(Parameters::outputVectorScale * output[x][y][0],
                                                             Parameters::outputVectorScale * output[x][y][1]);
 
+#ifndef NO_X
                     cv::line(outputImage, start, end,
                              CV_RGB(0xFF, 0xFF, 0xFF));
+#endif
+
+                    if(x > (Parameters::detectorSize / 2)) {
+                        rightFlow += output[x][y][0];
+                    }
+                    else {
+                        leftFlow += output[x][y][0];
+                    }
                 }
             }
 
         }
 
+        char flow[255];
+
+        if(turningTime > 0)
+        {
+            if(turningTime < 15) {
+                motor.tank(1.0, 1.0);
+#ifndef NO_X
+                cv::putText(outputImage, "STABILISING", cv::Point(0, outputImageSize - 5),
+                            cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0, 0, 0xFF));
+#else
+                std::cout << "STABILISING" << std::endl;
+#endif
+            }
+            else {
+#ifndef NO_X
+                cv::putText(outputImage, "TURNING", cv::Point(0, outputImageSize - 5),
+                            cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0, 0xFF, 0xFF));
+#else
+                std::cout << "TURNING" << std::endl;
+#endif
+            }
+            turningTime--;
+        }
+        else
+        {
+            if(std::abs(leftFlow) > std::abs(rightFlow) && std::abs(leftFlow) > 100) {
+                motor.tank(0.5, -0.5);
+                turningTime = 40;
+                sprintf(flow, "LEFT (%f)", std::abs(leftFlow));
+#ifndef NO_X
+                cv::putText(outputImage, flow, cv::Point(0, outputImageSize - 5),
+                        cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0xFF, 0, 0));
+#else
+                std::cout << flow << std::endl;
+#endif
+            }
+            else if(std::abs(rightFlow) > 100){
+                motor.tank(-0.5, 0.5);
+                turningTime = 40;
+                sprintf(flow, "RIGHT (%f)", std::abs(rightFlow));
+#ifndef NO_X
+                cv::putText(outputImage, flow, cv::Point(0, outputImageSize - 5),
+                        cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0x00, 0xFF, 0));
+#else
+                std::cout << flow << std::endl;
+#endif
+            }
+            else {
+                motor.tank(1.0, 1.0);
+#ifndef NO_X
+                cv::putText(outputImage, "CENTRE", cv::Point(0, outputImageSize - 5),
+                        cv::FONT_HERSHEY_COMPLEX_SMALL, 1.0, CV_RGB(0xFF, 0xFF, 0));
+#else
+                std::cout << "CENTRE" << std::endl;
+#endif
+            }
+        }
+
+#ifdef NO_X
+        std::this_thread::sleep_for(std::chrono::milliseconds(33));
+#else
         cv::imshow("Frame", outputImage);
         cv::waitKey(33);
+#endif
     }
+
+    motor.tank(0.0, 0.0);
 }
 
 void runLive()
