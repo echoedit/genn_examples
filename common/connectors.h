@@ -2,6 +2,7 @@
 
 // Standard C++ includes
 #include <algorithm>
+#include <fstream>
 #include <stdexcept>
 #include <vector>
 
@@ -124,6 +125,21 @@ private:
     std::vector<Row> m_RowIndices;
 };
 
+inline std::ostream & operator << (std::ostream &os, const SimpleSparseProjection& p)
+{
+    for(unsigned int i = 0; i < p.getNumRows(); i++)
+    {
+        os << i << ":";
+        for(auto j = p.rowBegin(i); j != p.rowEnd(i); ++j)
+        {
+            os << *j << ",";
+        }
+        os << std::endl;
+    }
+
+    return os;
+}
+
 //----------------------------------------------------------------------------
 // Typedefines
 //----------------------------------------------------------------------------
@@ -155,6 +171,49 @@ void convertToSparseProjection(const SimpleSparseProjection &projection,
 
     // Set final synapse index for end of last row
     sparseProjection.indInG[projection.getNumRows()] = s;
+}
+
+template<unsigned int N>
+void convertToPartitionedSparseProjection(const SimpleSparseProjection &projection, unsigned int partitionSize,
+                                          PartitionedSparseProjection<N> &sparseProjection, AllocateFn allocate)
+{
+    // Allocate projection
+    allocate(projection.calcNumSynapses());
+
+    // Loop through rows
+    unsigned int s = 0;
+    for(unsigned int i = 0; i < projection.getNumRows(); i++)
+    {
+        // Copy row synapses into sparse projection
+        unsigned int *rowBegin = &sparseProjection.postIndices[s];
+        unsigned int *rowEnd = std::copy(projection.rowBegin(i), projection.rowEnd(i), rowBegin);
+
+        // Loop through partitions
+        unsigned int *subRowPartitionBegin = rowBegin;
+        for(unsigned int p = 0; p < N; p++)
+        {
+            // Calculate pivot point for this partition
+            const unsigned int pivot = (p + 1) * partitionSize;
+
+            // Partition remaining synapses in subrow so ones before pivot are moved to front
+            unsigned int *subRowPartitionEnd = std::partition(subRowPartitionBegin, rowEnd,
+                                                              [pivot](unsigned int j)
+                                                              {
+                                                                  return (j < pivot);
+
+                                                              });
+
+            // Add start and length indices to subrow
+            sparseProjection.subRowBeginIndices[p][i] = s + (subRowPartitionBegin - rowBegin);
+            sparseProjection.subRowLength[p][i] = subRowPartitionEnd - subRowPartitionBegin;
+
+            // Advance beginning of sub-row partition for next sub-row
+            subRowPartitionBegin = subRowPartitionEnd;
+        }
+
+        // Add row length to total number of synapses
+        s += projection.rowLength(i);
+    }
 }
 
 template <typename Generator>
