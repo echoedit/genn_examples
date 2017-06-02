@@ -5,11 +5,14 @@
 #include "modelSpec.h"
 
 #include "../common/connectors.h"
+#include "../common/spike_csv_recorder.h"
 #include "../common/timer.h"
 
 #include "parameters.h"
 
 #include "benchmark_CODE/definitions.h"
+
+uint64_t baseRates[Parameters::numPre];
 
 int main()
 {
@@ -26,18 +29,21 @@ int main()
         std::mt19937 gen(rd());
 
 #ifdef SYNAPSE_MATRIX_SPARSE
-        buildFixedProbabilityConnector(Parameters::numPre, Parameters::numPost, Parameters::connectionProbability,
-                                       CSyn, &allocateSyn, gen);
+        {
+            auto proj = buildFixedProbabilityConnector(Parameters::numPre, Parameters::numPost, Parameters::connectionProbability, gen);
+            //convertToPartitionedSparseProjection(proj, 1536, CSyn, allocateSyn);
+            convertToSparseProjection(proj, CSyn, allocateSyn);
+            
+        }
 #ifdef SYNAPSE_MATRIX_INDIVIDUAL
-        std::fill(&gSyn[0], &gSyn[CSyn.connN], 0.0f);
+        std::fill(&gSyn[0], &gSyn[CSyn.connN], Parameters::weight);
 #endif  // SYNAPSE_MATRIX_INDIVIDUAL
 #else   // !SYNAPSE_MATRIX_SPARSE
-        std::fill(&gSyn[0], &gSyn[Parameters::numPre * Parameters::numPost], 0.0f);
+        std::fill(&gSyn[0], &gSyn[Parameters::numPre * Parameters::numPost], Parameters::weight);
 #endif  // !SYNAPSE_MATRIX_SPARSE
 
         // Convert input rate into a RNG threshold and fill
         float inputRate = 10E-3f;
-        uint64_t baseRates[Parameters::numPre];
         convertRateToRandomNumberThreshold(&inputRate, &baseRates[0], 1);
         std::fill(&baseRates[1], &baseRates[Parameters::numPre], baseRates[0]);
 
@@ -55,9 +61,13 @@ int main()
         // Setup reverse connection indices for benchmark
         initbenchmark();
     }
-
+#ifdef VALIDATE
+    SpikeCSVRecorder stimSpikes("stim_spikes.csv", glbSpkCntStim, glbSpkStim);
+    SpikeCSVRecorder neuronSpikes("neuron_spikes.csv", glbSpkCntNeurons, glbSpkNeurons);
+#endif // VALIDATE
     {
         Timer<std::milli> t("Sim:");
+
 
         // Loop through timesteps
         for(unsigned int t = 0; t < 5000; t++)
@@ -65,11 +75,21 @@ int main()
             // Simulate
 #ifndef CPU_ONLY
             stepTimeGPU();
+
+#ifdef VALIDATE
+            pullStimCurrentSpikesFromDevice();
+            pullNeuronsCurrentSpikesFromDevice();
+#endif  // VALIDATE
 #else
             stepTimeCPU();
+#endif
+
+#ifdef VALIDATE
+            stimSpikes.record(t);
+            neuronSpikes.record(t);
 #endif
         }
     }
 
-  return 0;
+    return 0;
 }

@@ -47,7 +47,7 @@ void modelDefinition(NNmodel &model)
 
     // Static synapse parameters
     WeightUpdateModels::StaticPulse::VarValues staticSynapseInit(
-        0.0);    // 0 - Wij (nA)
+        Parameters::weight);    // 0 - Wij (nA)
 
     // Exponential current parameters
     ExpCurr::ParamValues expCurrParams(
@@ -59,10 +59,11 @@ void modelDefinition(NNmodel &model)
     model.addNeuronPopulation<LIF>("Neurons", Parameters::numPost,
                                    lifParams, lifInit);
 
-    model.addSynapsePopulation<WeightUpdateModels::StaticPulse, ExpCurr>("Syn", Parameters::synapseMatrixType, NO_DELAY,
-                             "Stim", "Neurons",
-                             {}, staticSynapseInit,
-                             expCurrParams, {});
+    auto *syn = model.addSynapsePopulation<WeightUpdateModels::StaticPulse, ExpCurr>("Syn", Parameters::synapseMatrixType, NO_DELAY,
+                                                                                     "Stim", "Neurons",
+                                                                                     {}, staticSynapseInit,
+                                                                                     expCurrParams, {});
+    //syn->setMaxConnections(3306);
 
     model.finalize();
 }
