@@ -203,10 +203,18 @@ void convertToPartitionedSparseProjection(const SimpleSparseProjection &projecti
 
                                                               });
 
+            // Subtract index of start of partition, making indices local to block
+            std::transform(subRowPartitionBegin, subRowPartitionEnd, subRowPartitionBegin,
+                           [p, partitionSize](unsigned int j)
+                           {
+                               return j - (p * partitionSize);
+                           });
+
             // Add start and length indices to subrow
             sparseProjection.subRowBeginIndices[p][i] = s + (subRowPartitionBegin - rowBegin);
             sparseProjection.subRowLength[p][i] = subRowPartitionEnd - subRowPartitionBegin;
 
+            // **TODO** check block size
             // Advance beginning of sub-row partition for next sub-row
             subRowPartitionBegin = subRowPartitionEnd;
         }
