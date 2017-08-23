@@ -1,0 +1,26 @@
+#!/bin/bash
+
+#$ -q gpu.q
+#$ -pe openmpi 49
+
+module load sge
+module load gcc/4.9.4
+module load cuda/6.5
+module load openmpi/gcc/64/1.6.5
+#Add GEN to path
+GENN_PATH=/home/m/mz/mz252/genn
+MPI_PATH=/cm/shared/apps/openmpi/gcc/64/1.6.5
+export PATH=$PATH:$GENN_PATH/lib/bin
+export GENN_PATH
+export MPI_PATH
+
+# Add CUDA to path
+CUDA_PATH=/usr/local/cuda
+PATH=$PATH:$CUDA_PATH/bin
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CUDA_PATH/lib64
+cd $HOME/genn_examples/va_benchmark
+pwd
+mpirun -bynode -np 2 genn-buildmodel.sh model.cc -m
+mpirun -bynode -np 2 make MPI_ENABLE=1 SIM_CODE=va_benchmark_CODE
+mpirun -np 1 --host node152.cm.cluster ./simulator_0 : -np 1 --host node151.cm.cluster ./simulator_1
+echo "Finished job script"
