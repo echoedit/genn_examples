@@ -49,8 +49,13 @@ void modelDefinition(NNmodel &model)
         10.0);  // 0 - TauSyn (ms)
 
     // Create IF_curr neuron
+#ifdef MPI_ENABLE
+    model.addNeuronPopulation<LIF>("E", Parameters::numExcitatory, lifParams, lifInit, 0, 0);
+    model.addNeuronPopulation<LIF>("I", Parameters::numInhibitory, lifParams, lifInit, 1, 0);
+#else
     model.addNeuronPopulation<LIF>("E", Parameters::numExcitatory, lifParams, lifInit);
     model.addNeuronPopulation<LIF>("I", Parameters::numInhibitory, lifParams, lifInit);
+#endif
 
     model.addSynapsePopulation<WeightUpdateModels::StaticPulse, ExpCurr>(
         "EE", SynapseMatrixType::SPARSE_GLOBALG, NO_DELAY,

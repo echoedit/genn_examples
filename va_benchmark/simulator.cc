@@ -55,6 +55,10 @@ int main()
 
   auto simStart = chrono::steady_clock::now();
   // Loop through timesteps
+#ifdef MPI_ENABLE
+    int hostID;
+    MPI_Comm_rank(MPI_COMM_WORLD, &hostID);
+#endif
   for(unsigned int t = 0; t < 10000; t++)
   {
     // Simulate
@@ -62,11 +66,22 @@ int main()
     stepTimeGPU();
 
     pullECurrentSpikesFromDevice();
+    pullICurrentSpikesFromDevice();
+
+#ifdef MPI_ENABLE
+    communicateSpikes();
+#endif
 #else
     stepTimeCPU();
 #endif
 
+#ifdef MPI_ENABLE
+    if (hostID == 0) {
+        spikes.record(t);
+    }
+#else
     spikes.record(t);
+#endif
   }
   auto simEnd = chrono::steady_clock::now();
   printf("Simulation %ldms\n", chrono::duration_cast<chrono::milliseconds>(simEnd - simStart).count());
